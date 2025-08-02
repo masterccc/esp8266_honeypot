@@ -6,7 +6,7 @@
 ## Features
 
 - Fake Telnet server (single session, drops after 10s if a new client connects)
-- Fake web server simulating sensitive endpoints
+- Fake web server
 - Logs Telnet commands and web accesses
 - Web admin interface for log viewing/clearing, stats, and OLED control
 - OLED status display (time, stats, last event)
