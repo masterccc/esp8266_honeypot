@@ -1,0 +1,20 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+BreakBeforeBraces: Attach   # Style `if () {` instead of `if ()\n{`
+AllowShortIfStatementsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Inline
+AlwaysBreakTemplateDeclarations: Yes
+SpaceAfterCStyleCast: true
+SpacesInContainerLiterals: false
+SpaceBeforeParens: ControlStatements
+KeepEmptyLinesAtTheStartOfBlocks: false
+SortIncludes: false
+IncludeBlocks: Preserve
+IndentCaseLabels: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignTrailingComments: true
+PointerAlignment: Left   # `int* ptr` instead of `int *ptr`
