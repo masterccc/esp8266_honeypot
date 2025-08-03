@@ -356,6 +356,13 @@ void setupWebServer() {
         server.send(200, "text/plain", "ok");
     });
 
+    server.on("/display/event", HTTP_GET, []() {
+        NEED_AUTH();
+        screen_display = LASTEVENT;
+        updateDisplay();
+        server.send(200, "text/plain", "ok");
+    });
+
     server.on("/reboot", HTTP_GET, []() {
         NEED_AUTH();
         server.send(200, "text/plain", "Redémarrage...");
