@@ -50,6 +50,10 @@ ESP8266WebServer fake_webserver(PORT_WEB_HONEYPOT);
 const char*      web_blacklist[]   = WEB_BLACKLIST;
 const int        web_blacklistSize = sizeof(web_blacklist) / sizeof(web_blacklist[0]);
 
+// const char*      web_exact_blacklist[]   = WEB_EXACT_BLACKLIST;
+// const int        web_exact_blacklistSize = sizeof(web_exact_blacklist) /
+// sizeof(web_exact_blacklist[0]);
+
 // NTP
 WiFiUDP   ntpUDP;
 NTPClient timeClient(ntpUDP, NTP_POOL, NTP_SHIFT, NTP_UPDATE_DELAY);
@@ -233,14 +237,17 @@ String httpMethodToString(HTTPMethod method) {
 // Honeypot web server
 void setupWebServer() {
     fake_webserver.onNotFound([]() {
-        IPAddress clientIP = fake_webserver.client().remoteIP();
-        String    postData = fake_webserver.hasArg("plain") ? fake_webserver.arg("plain") : "";
-        String    url      = fake_webserver.uri();
-
+        String url = fake_webserver.uri();
         for (int i = 0; i < web_blacklistSize; i++) {
             if (url.indexOf(web_blacklist[i]) != -1) return;
         }
 
+        IPAddress clientIP = fake_webserver.client().remoteIP();
+        String    postData = fake_webserver.hasArg("plain") ? fake_webserver.arg("plain") : "";
+
+        // for (int i = 0; i < web_blacklistSize; i++) {
+        //    if (url == web_exact_blacklist[i]) return;
+        //}
         sanitize(postData);
         sanitize(url);
         addLog(clientIP, url, postData);
@@ -266,7 +273,7 @@ void setupWebServer() {
         if (commandesHead) lastTelnetCmd = commandesHead->commande;
         int totalWebLogs = countWebLogs();
 
-        // Count uniq IPs
+        // Count unique Web IPs
         IPAddress uniqueWebIPs[100];
         int       uniqueWebIPsCount = 0;
         for (LogEntry* ptr = logsHead; ptr; ptr = ptr->next) {
@@ -279,26 +286,64 @@ void setupWebServer() {
             }
             if (!found && uniqueWebIPsCount < 100) uniqueWebIPs[uniqueWebIPsCount++] = ptr->ip;
         }
-        String lastWebURL = logsHead ? logsHead->url : "";
 
+        String lastWebURL    = logsHead ? logsHead->url : "";
         int    rssi          = WiFi.RSSI();
         String signalQuality = (rssi > -60) ? "Strong" : (rssi > -75) ? "Medium" : "Weak";
         String bootTimeStr   = timeClient.getFormattedTime();
+
+        // Calcul des pourcentages
+        int totalRAM       = 42000;
+        int freeRAM        = ESP.getFreeHeap();
+        int ramUsed        = totalRAM - freeRAM;
+        int ramUsedPercent = (ramUsed * 100) / totalRAM;
+
+        int wifiQualityPercent = constrain(2 * (rssi + 100), 0, 100);
 
         String html;
         html.reserve(4096);
         html = generate_header("ESP8266 - Stats");
         html += R"rawliteral(
-      <h1>ESP8266 - Usage Stats</h1>
+
+    <h1>ESP8266 - Usage Stats</h1>
+      <div class="circle-wrapper">
+        <div class="circle-block">
+          <div class="circle" style="--p: )rawliteral" +
+                String(ramUsedPercent) + R"rawliteral(%;">
+            <span>)rawliteral" +
+                String(ramUsedPercent) + R"rawliteral(%</span>
+          </div>
+          <div class="circle-label">RAM Used</div>
+        </div>
+        <div class="circle-block">
+          <div class="circle" style="--p: )rawliteral" +
+                String(wifiQualityPercent) + R"rawliteral(%;">
+            <span>)rawliteral" +
+                String(wifiQualityPercent) + R"rawliteral(%</span>
+          </div>
+          <div class="circle-label">WiFi Signal</div>
+        </div>
+        <div class="circle-block">
+          <div class="circle" style="--p: 100%;">
+            <span>)rawliteral" +
+                String(totalTelnetLogs) + R"rawliteral(</span>
+          </div>
+          <div class="circle-label">Telnet Cmds</div>
+        </div>
+        <div class="circle-block">
+          <div class="circle" style="--p: 100%;">
+            <span>)rawliteral" +
+                String(totalWebLogs) + R"rawliteral(</span>
+          </div>
+          <div class="circle-label">Web Reqs</div>
+        </div>
+      </div>
+    <div class="container">
       <ul>
         <li>Firmware version: )rawliteral" +
                 String(ESP.getSdkVersion()) + R"rawliteral(</li>
-        <li>RAM free: )rawliteral" +
-                String(ESP.getFreeHeap()) + R"rawliteral( bytes</li>
         <li>Boot time (UTC+1): )rawliteral" +
                 bootTimeStr + R"rawliteral(</li>
-        <li>WiFi signal: )rawliteral" +
-                String(rssi) + R"rawliteral( dBm ()rawliteral" + signalQuality + R"rawliteral()</li>
       </ul>
 
       <h2>Telnet Stats</h2>
@@ -310,8 +355,9 @@ void setupWebServer() {
         <li>Last Telnet command: )rawliteral" +
                 lastTelnetCmd + R"rawliteral(</li>
       </ul>
-        <a class='button' href='/logs'>View Telnet Logs</a>
-        <a class='button' href='#' onclick="fetch('/delete').then(() => showToast('Sent'))">Clear Telnet Logs</a>
+      <a class='button' href='/logs'>Open</a>
+      <a class='button button-danger' href='#' onclick="fetch('/delete').then(() => showToast('Sent'))">Delete</a>
+
       <h2>Web Stats</h2>
       <ul>
         <li>Total Web logs: )rawliteral" +
@@ -321,17 +367,19 @@ void setupWebServer() {
         <li>Last Web URL: )rawliteral" +
                 lastWebURL + R"rawliteral(</li>
       </ul>
-        <a class='button' href='/logweb'>View Web Logs</a>
-        <a class='button' href='#' onclick="fetch('/delete_logweb').then(() => showToast('Sent'))">Clear Web Logs</a>
-        <br>
-        <h2>General</h2>
-          <a class='button' href='#' onclick="fetch('/reboot').then(() => showToast('Sent'))">Reboot</a>
-          <a class='button' href='#' onclick="fetch('/display/hour').then(() => showToast('Sent'))">Display hour</a>
-          <a class='button' href='#' onclick="fetch('/display/state').then(() => showToast('Sent'))">Display state</a>
-          <a class='button' href='#' onclick="fetch('/display/none').then(() => showToast('Sent'))">Clear screen</a>
+      <a class='button' href='/logweb'>Open</a>
+      <a class='button button-danger' href='#' onclick="fetch('/delete_logweb').then(() => showToast('Sent'))">Delete</a>
+
+      <h2>General</h2>
+      <a class='button button-danger' href='#' onclick="fetch('/reboot').then(() => showToast('Sent'))">Reboot</a>
+      <a class='button' href='#' onclick="fetch('/display/hour').then(() => showToast('Sent'))">Display hour</a>
+      <a class='button' href='#' onclick="fetch('/display/state').then(() => showToast('Sent'))">Display state</a>
+      <a class='button' href='#' onclick="fetch('/display/none').then(() => showToast('Sent'))">Clear screen</a>
+      </div>
     </body>
     </html>
     )rawliteral";
+
         server.send(200, "text/html", html);
     });
 
