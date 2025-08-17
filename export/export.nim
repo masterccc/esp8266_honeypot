@@ -4,7 +4,7 @@ import httpclient, strutils, base64, htmlparser, xmltree, json, os, times
 # === Configuration ===
 const
   baseUrl = "http://my_ip:port"
-  username = "username"
+  username = "user"
   password = "pass"
 
 let now = now()
@@ -16,13 +16,14 @@ let credentials = username & ":" & password
 let authValue = encode(cast[seq[byte]](credentials))
 let authHeader = "Basic " & authValue
 
-# === HTTP client avec auth ===
+var telnet_collected = 0
+var web_collected = 0 
+
 proc createHttpClient(): HttpClient =
   var client = newHttpClient()
   client.headers["Authorization"] = authHeader
   return client
 
-# === Nettoyage HTML ===
 proc removeNonPrintable(s: string): string =
   for c in s:
     if c in ' '..'~' or c in {'\n', '\r', '\t'}:
@@ -36,7 +37,6 @@ proc fixBrokenTags(s: string): string =
   result = result.replace("</code>", "</code>")
   result = result.replace("</pre>", "</pre>")
 
-# === Parser HTML Table ===
 proc findTable(n: XmlNode): XmlNode =
   if n.kind == xnElement and n.tag == "table":
     return n
@@ -47,7 +47,6 @@ proc findTable(n: XmlNode): XmlNode =
         return result
   return nil
 
-# === Extraction des logs génériques depuis une URL donnée ===
 proc extractLogsFromUrl(client: HttpClient, path: string, kind: string): seq[JsonNode] =
   var logs: seq[JsonNode] = @[]
   let rawHtml = client.getContent(baseUrl & path)
@@ -74,6 +73,7 @@ proc extractLogsFromUrl(client: HttpClient, path: string, kind: string): seq[Jso
 
     if kind == "logs":
       if fields.len >= 4 and fields[3].len > 0:
+        inc telnet_collected
         logs.add(%*{
           "id": fields[0],
           "time": fields[1],
@@ -82,6 +82,7 @@ proc extractLogsFromUrl(client: HttpClient, path: string, kind: string): seq[Jso
         })
     elif kind == "web":
       if fields.len >= 5:
+        inc web_collected
         logs.add(%*{
           "id": fields[0],
           "time": fields[1],
@@ -93,7 +94,6 @@ proc extractLogsFromUrl(client: HttpClient, path: string, kind: string): seq[Jso
     inc rowIndex
   return logs
 
-# === Exécution principale ===
 let client = createHttpClient()
 let logs = extractLogsFromUrl(client, "/logs", "logs")
 let webLogs = extractLogsFromUrl(client, "/logweb", "web")
@@ -105,3 +105,6 @@ let outputJson = %*{
 
 writeFile(outputFile, pretty(outputJson))
 echo "✅ Fichier généré : ", outputFile
+echo "Extracted :"
+echo "- ", web_collected, " web logs"
+echo "- ", telnet_collected, " telnet logs"
