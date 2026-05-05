@@ -32,6 +32,8 @@ unsigned long bootTime, previousDisplayUpdate = 0;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
+bool is_full = false ;
+
 // Telnet server
 WiFiServer    telnetServer(PORT_TELNET);
 WiFiClient    telnetClient;
@@ -50,15 +52,14 @@ ESP8266WebServer fake_webserver(PORT_WEB_HONEYPOT);
 const char*      web_blacklist[]   = WEB_BLACKLIST;
 const int        web_blacklistSize = sizeof(web_blacklist) / sizeof(web_blacklist[0]);
 
-// const char*      web_exact_blacklist[]   = WEB_EXACT_BLACKLIST;
-// const int        web_exact_blacklistSize = sizeof(web_exact_blacklist) /
-// sizeof(web_exact_blacklist[0]);
+//const char*      web_exact_blacklist[]   = WEB_EXACT_BLACKLIST;
+//const int        web_exact_blacklistSize = sizeof(web_exact_blacklist) / sizeof(web_exact_blacklist[0]);
 
 // NTP
 WiFiUDP   ntpUDP;
 NTPClient timeClient(ntpUDP, NTP_POOL, NTP_SHIFT, NTP_UPDATE_DELAY);
 
-enum e_display { NONE, STATS, HOUR, LASTEVENT };
+enum e_display { NONE, STATS, HOUR, LASTEVENT, FULL };
 enum e_display screen_display = DISPLAY_MODE;
 
 void checkWiFi() {
@@ -189,7 +190,14 @@ void updateDisplay() {
             display.setCursor(10, 20);
             display.println(timeClient.getFormattedTime());
             break;
+        case FULL:
+            display.clearDisplay();
+            display.setTextSize(2);
+            display.setCursor(10, 20);
+            display.println("IT'S FULL :>");
+            break;
         case LASTEVENT:
+          //display.clearDisplay();
             break;
         case STATS:
             display.clearDisplay();
@@ -217,6 +225,9 @@ void sanitize(String& str) {
     str.replace(">", "&gt;");
 }
 
+int get_ram_usage() {
+  return ((TOTAL_RAM - ESP.getFreeHeap()) * 100.0) / TOTAL_RAM;
+}
 String httpMethodToString(HTTPMethod method) {
     switch (method) {
         case HTTP_GET:
@@ -237,15 +248,16 @@ String httpMethodToString(HTTPMethod method) {
 // Honeypot web server
 void setupWebServer() {
     fake_webserver.onNotFound([]() {
-        String url = fake_webserver.uri();
+        
+        String    url      = fake_webserver.uri();
         for (int i = 0; i < web_blacklistSize; i++) {
-            if (url.indexOf(web_blacklist[i]) != -1) return;
+           if (url.indexOf(web_blacklist[i]) != -1) return;
         }
-
+        
         IPAddress clientIP = fake_webserver.client().remoteIP();
         String    postData = fake_webserver.hasArg("plain") ? fake_webserver.arg("plain") : "";
-
-        // for (int i = 0; i < web_blacklistSize; i++) {
+        
+       // for (int i = 0; i < web_blacklistSize; i++) {
         //    if (url == web_exact_blacklist[i]) return;
         //}
         sanitize(postData);
@@ -268,14 +280,14 @@ void setupWebServer() {
     // Admin web server
     server.on("/", HTTP_GET, []() {
         NEED_AUTH();
-        int    totalTelnetLogs = countCommandeLogs(), uniqueTelnetIPs = countUniqueIPs();
+        int totalTelnetLogs = countCommandeLogs(), uniqueTelnetIPs = countUniqueIPs();
         String lastTelnetCmd = "";
         if (commandesHead) lastTelnetCmd = commandesHead->commande;
         int totalWebLogs = countWebLogs();
 
         // Count unique Web IPs
         IPAddress uniqueWebIPs[100];
-        int       uniqueWebIPsCount = 0;
+        int uniqueWebIPsCount = 0;
         for (LogEntry* ptr = logsHead; ptr; ptr = ptr->next) {
             bool found = false;
             for (int j = 0; j < uniqueWebIPsCount; j++) {
@@ -284,19 +296,19 @@ void setupWebServer() {
                     break;
                 }
             }
-            if (!found && uniqueWebIPsCount < 100) uniqueWebIPs[uniqueWebIPsCount++] = ptr->ip;
+            if (!found && uniqueWebIPsCount < 100)
+                uniqueWebIPs[uniqueWebIPsCount++] = ptr->ip;
         }
 
-        String lastWebURL    = logsHead ? logsHead->url : "";
-        int    rssi          = WiFi.RSSI();
+        String lastWebURL = logsHead ? logsHead->url : "";
+        int rssi = WiFi.RSSI();
         String signalQuality = (rssi > -60) ? "Strong" : (rssi > -75) ? "Medium" : "Weak";
-        String bootTimeStr   = timeClient.getFormattedTime();
+        String bootTimeStr = timeClient.getFormattedTime();
 
         // Calcul des pourcentages
-        int totalRAM       = 42000;
-        int freeRAM        = ESP.getFreeHeap();
-        int ramUsed        = totalRAM - freeRAM;
-        int ramUsedPercent = (ramUsed * 100) / totalRAM;
+      
+        int ramUsedPercent = get_ram_usage();
+        
 
         int wifiQualityPercent = constrain(2 * (rssi + 100), 0, 100);
 
@@ -305,83 +317,70 @@ void setupWebServer() {
         html = generate_header("ESP8266 - Stats");
         html += R"rawliteral(
 
-    <h1>ESP8266 - Usage Stats</h1>
-      <div class="circle-wrapper">
-        <div class="circle-block">
-          <div class="circle" style="--p: )rawliteral" +
-                String(ramUsedPercent) + R"rawliteral(%;">
-            <span>)rawliteral" +
-                String(ramUsedPercent) + R"rawliteral(%</span>
+        <h1>ESP8266 - Usage Stats</h1>
+          <div class="circle-wrapper">
+            <div class="circle-block">
+              <div class="circle" style="--p: )rawliteral" + String(ramUsedPercent) + R"rawliteral(%;">
+                <span>)rawliteral" + String(ramUsedPercent) + R"rawliteral(%</span>
+              </div>
+              <div class="circle-label">RAM Used</div>
+            </div>
+            <div class="circle-block">
+              <div class="circle" style="--p: )rawliteral" + String(wifiQualityPercent) + R"rawliteral(%;">
+                <span>)rawliteral" + String(wifiQualityPercent) + R"rawliteral(%</span>
+              </div>
+              <div class="circle-label">WiFi Signal</div>
+            </div>
+            <div class="circle-block">
+              <div class="circle" style="--p: 100%;">
+                <span>)rawliteral" + String(totalTelnetLogs) + R"rawliteral(</span>
+              </div>
+              <div class="circle-label">Telnet Cmds</div>
+            </div>
+            <div class="circle-block">
+              <div class="circle" style="--p: 100%;">
+                <span>)rawliteral" + String(totalWebLogs) + R"rawliteral(</span>
+              </div>
+              <div class="circle-label">Web Reqs</div>
+            </div>
           </div>
-          <div class="circle-label">RAM Used</div>
-        </div>
-        <div class="circle-block">
-          <div class="circle" style="--p: )rawliteral" +
-                String(wifiQualityPercent) + R"rawliteral(%;">
-            <span>)rawliteral" +
-                String(wifiQualityPercent) + R"rawliteral(%</span>
-          </div>
-          <div class="circle-label">WiFi Signal</div>
-        </div>
-        <div class="circle-block">
-          <div class="circle" style="--p: 100%;">
-            <span>)rawliteral" +
-                String(totalTelnetLogs) + R"rawliteral(</span>
-          </div>
-          <div class="circle-label">Telnet Cmds</div>
-        </div>
-        <div class="circle-block">
-          <div class="circle" style="--p: 100%;">
-            <span>)rawliteral" +
-                String(totalWebLogs) + R"rawliteral(</span>
-          </div>
-          <div class="circle-label">Web Reqs</div>
-        </div>
-      </div>
-    <div class="container">
-      <ul>
-        <li>Firmware version: )rawliteral" +
-                String(ESP.getSdkVersion()) + R"rawliteral(</li>
-        <li>Boot time (UTC+1): )rawliteral" +
-                bootTimeStr + R"rawliteral(</li>
-      </ul>
+        <div class="container">
+          <ul>
+            <li>Firmware version: )rawliteral" + String(ESP.getSdkVersion()) + R"rawliteral(</li>
+            <li>Boot time (UTC+1): )rawliteral" + bootTimeStr + R"rawliteral(</li>
+          </ul>
 
-      <h2>Telnet Stats</h2>
-      <ul>
-        <li>Total Telnet commands: )rawliteral" +
-                String(totalTelnetLogs) + R"rawliteral(</li>
-        <li>Unique Telnet IPs: )rawliteral" +
-                String(uniqueTelnetIPs) + R"rawliteral(</li>
-        <li>Last Telnet command: )rawliteral" +
-                lastTelnetCmd + R"rawliteral(</li>
-      </ul>
-      <a class='button' href='/logs'>Open</a>
-      <a class='button button-danger' href='#' onclick="fetch('/delete').then(() => showToast('Sent'))">Delete</a>
+          <h2>Telnet Stats</h2>
+          <ul>
+            <li>Total Telnet commands: )rawliteral" + String(totalTelnetLogs) + R"rawliteral(</li>
+            <li>Unique Telnet IPs: )rawliteral" + String(uniqueTelnetIPs) + R"rawliteral(</li>
+            <li>Last Telnet command: )rawliteral" + lastTelnetCmd + R"rawliteral(</li>
+          </ul>
+          <a class='button' href='/logs'>Open</a>
+          <a class='button button-danger' href='#' onclick="fetch('/delete').then(() => showToast('Sent'))">Delete</a>
 
-      <h2>Web Stats</h2>
-      <ul>
-        <li>Total Web logs: )rawliteral" +
-                String(totalWebLogs) + R"rawliteral(</li>
-        <li>Unique Web IPs: )rawliteral" +
-                String(uniqueWebIPsCount) + R"rawliteral(</li>
-        <li>Last Web URL: )rawliteral" +
-                lastWebURL + R"rawliteral(</li>
-      </ul>
-      <a class='button' href='/logweb'>Open</a>
-      <a class='button button-danger' href='#' onclick="fetch('/delete_logweb').then(() => showToast('Sent'))">Delete</a>
+          <h2>Web Stats</h2>
+          <ul>
+            <li>Total Web logs: )rawliteral" + String(totalWebLogs) + R"rawliteral(</li>
+            <li>Unique Web IPs: )rawliteral" + String(uniqueWebIPsCount) + R"rawliteral(</li>
+            <li>Last Web URL: )rawliteral" + lastWebURL + R"rawliteral(</li>
+          </ul>
+          <a class='button' href='/logweb'>Open</a>
+          <a class='button button-danger' href='#' onclick="fetch('/delete_logweb').then(() => showToast('Sent'))">Delete</a>
 
-      <h2>General</h2>
-      <a class='button button-danger' href='#' onclick="fetch('/reboot').then(() => showToast('Sent'))">Reboot</a>
-      <a class='button' href='#' onclick="fetch('/display/hour').then(() => showToast('Sent'))">Display hour</a>
-      <a class='button' href='#' onclick="fetch('/display/state').then(() => showToast('Sent'))">Display state</a>
-      <a class='button' href='#' onclick="fetch('/display/none').then(() => showToast('Sent'))">Clear screen</a>
-      </div>
-    </body>
-    </html>
-    )rawliteral";
+          <h2>General</h2>
+          <a class='button button-danger' href='#' onclick="fetch('/reboot').then(() => showToast('Sent'))">Reboot</a>
+          <a class='button' href='#' onclick="fetch('/display/hour').then(() => showToast('Sent'))">Display hour</a>
+          <a class='button' href='#' onclick="fetch('/display/state').then(() => showToast('Sent'))">Display state</a>
+          <a class='button' href='#' onclick="fetch('/display/none').then(() => showToast('Sent'))">Clear screen</a>
+          </div>
+        </body>
+        </html>
+        )rawliteral";
 
         server.send(200, "text/html", html);
-    });
+});
+
 
     server.on("/display/hour", HTTP_GET, []() {
         NEED_AUTH();
@@ -447,7 +446,7 @@ void setupWebServer() {
 
         server.sendContent("<a class='button' href='/'>Go back</a>");
         server.sendContent(" <a class='button' href='#' onclick=\"fetch('/delete').then(() => "
-                           "showToast('Sent'));\">Delete logs</a>");
+                           "showToast('Sent')); window.location = ('/'); \">Delete logs</a>");
         server.sendContent("</body></html>");
         server.sendContent("");
     });
@@ -488,7 +487,7 @@ void setupWebServer() {
 
         server.sendContent("<a class='button' href='/'>Go back</a>");
         server.sendContent(" <a class='button' href='#' onclick=\"fetch('/delete_logweb').then(() "
-                           "=> showToast('Sent'));\">Delete Logs</a>");
+                           "=> showToast('Sent')); window.location = ('/'); \">Delete Logs</a>");
         server.sendContent("</body></html>");
         server.sendContent("");
     });
@@ -535,11 +534,28 @@ void setup() {
 }
 
 void loop() {
+    
+    
     checkWiFi();
+    if(is_full){
+      server.handleClient();
+      screen_display = FULL ;
+      updateDisplay();
+      return ;
+    }
+
+    if( get_ram_usage() > MAX_STORAGE_THRESOLD){
+      is_full = true ; 
+      screen_display = FULL ;
+      updateDisplay();
+      return ;
+    }
+
     server.handleClient();
     fake_webserver.handleClient();
     timeClient.update();
 
+    
     // Gestion expiration session Telnet (>10s)
     if (telnetServer.hasClient()) {
         unsigned long now = millis();

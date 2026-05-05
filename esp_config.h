@@ -1,3 +1,7 @@
+// ESP
+#define TOTAL_RAM 42000
+#define MAX_STORAGE_THRESOLD 94
+
 // OLED config
 #define SDA 14
 #define SCL 12
