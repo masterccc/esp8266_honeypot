@@ -35,19 +35,17 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 bool is_full = false ;
 
 // Telnet server
-/*
+
 WiFiServer    telnetServer(PORT_TELNET);
 WiFiClient    telnetClient;
 bool          passwordEntered = false, authDone = false;
 String        telnetBuffer       = "", loginInput, passwordInput;
-
+const char*   blacklist[]        = CMD_BLACKLIST;
+const int     blacklistSize      = sizeof(blacklist) / sizeof(blacklist[0]);
 unsigned long telnetLastActive   = 0;
 unsigned long telnetSessionStart = 0;
 enum TelnetAuthState { TELNET_LOGIN, TELNET_PASSWORD, TELNET_AUTHED };
 TelnetAuthState telnetState = TELNET_LOGIN;
-*/
-const char*   blacklist[]        = CMD_BLACKLIST;
-const int     blacklistSize      = sizeof(blacklist) / sizeof(blacklist[0]);
 
 // Web servers
 ESP8266WebServer server(PORT_WEB_ADMIN);
@@ -559,7 +557,7 @@ void loop() {
     fake_webserver.handleClient();
     timeClient.update();
 
-    /*
+    
     // Gestion expiration session Telnet (>10s)
     if (telnetServer.hasClient()) {
         unsigned long now = millis();
@@ -629,7 +627,7 @@ void loop() {
         }
 
     }
-    */
+    
     unsigned long currentMillis = millis();
     if (currentMillis - previousDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
         previousDisplayUpdate = currentMillis;
